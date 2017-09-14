@@ -45,6 +45,7 @@ class OutputCategories(object):
     self.removed = []
     self.listchange = []
     self.assumed_listchange = []
+    self.unhandled = []
 
 def main():
   # Handle arguments and help
@@ -116,8 +117,9 @@ def main():
     else:
       # Look for the start embedded in the end
       if not contains_sublist(end, start):
+        output.unhandled.append("export {}={} # complex list handling?".format(key, sourced_env[key]))
         # We don't have the original list embedded in the end list...
-        raise NotImplementedError("Not yet handling lists with removed items")
+        # raise NotImplementedError("Not yet handling lists with removed items")
 
       ind = index_of_sublist(end, start)
 
@@ -146,6 +148,10 @@ def main():
   if output.assumed_listchange:
     print(COMMENT_PREFIX + " Variables created - but looked like a list; assuming prefix operation")
     print("\n".join(output.assumed_listchange))
+    print()
+  if output.unhandled:
+    print(COMMENT_PREFIX + " WARNING: The following were unhandled/unknown/too complex")
+    print("\n".join(x + "#" for x in output.unhandled))
     print()
 
 if __name__ == "__main__":
