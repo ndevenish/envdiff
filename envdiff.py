@@ -12,6 +12,27 @@ Usage:
 import os
 import sys
 import subprocess
+import re
+
+# Look for :, but not ://
+re_list_splitter = re.compile(r":(?!\/\/)")
+
+def is_bash_listlike(entry):
+  "Does this string look like a bash list?"
+  return re_list_splitter.search(entry) is not None
+
+def sublist_index(a, b):
+  "Returns the index of b in a, or None"
+  if len(a) < len(b):
+    return None
+  for i in range(len(a)-len(b)+1):
+    if a[i:i+len(b)] == b:
+      return i
+  return None
+
+def contains_sublist(a, b):
+  "Tests if list a contains sequence b"
+  return sublist_index(a,b) is not None
 
 def main():
   # Handle arguments and help
@@ -38,33 +59,59 @@ def main():
   # Now, go through and find the differences in these two environments
   start_keys = set(start_env.keys())
   sourced_keys = set(sourced_env.keys())
+
+  added_keys = sourced_keys - start_keys
   changed_keys = {x for x in (start_keys & sourced_keys) if start_env[x] != sourced_env[x]}
 
-  # Firstly, added keys
-  for key in sourced_keys - start_keys:
-    print("export {}={}".format(key, sourced_env[key]))
+  # Look for added keys that are listlike - pretend these are changes
+  for changelike in [x for x in added_keys if is_bash_listlike(sourced_env[x])]:
+    print("({} is changelike but added - treating as list)".format(changelike))
+    changed_keys |= {changelike}
+    added_keys = added_keys - {changelike}
 
-  # Potentially, removed keys (though probably rare)
+  # Keys that changed, but are not listlike, are treated like adds - replacing
+  for key in list(changed_keys):
+    if not (is_bash_listlike(start_env.get(key, "")) or is_bash_listlike(sourced_env[key])):
+      print("({} changed but not in a listlike way, overwriting)".format(key))
+      changed_keys = changed_keys - {key}
+      added_keys |= {key}
+
+  # Removed keys are the easy case: Must have been unset
   for key in start_keys - sourced_keys:
     print("unset  {}")
 
-  # Now, changed keys
-  for key in changed_keys:
-    start = start_env[key]
-    end = sourced_env[key]
+  # Firstly, added keys
+  for key in added_keys:
+    print("export {}={}".format(key, sourced_env[key]))
 
-    # Let's try to embed one in the other
-    if start in end:
-      # Simple case of e.g. adding 
-      sindex = end.index(start)
-      interpose = end[:sindex] + "$" + key + end[sindex+len(start):]
-      print("export {}={}".format(key, interpose))
-    elif end in start:
-      # We might have had entries removed
-      raise NotImplementedError("No code to handle removal of entries from path")
-    else:
-      # Just set the whole variable for now, might be more complicated though
-      print("export {}={} # Complex change. Potentially incorrect...".format(key, end))
+  # Now, changed keys, but we know they are lists or look like one
+  for key in changed_keys:
+    start = re_list_splitter.split(start_env.get(key, ""))
+    end = re_list_splitter.split(sourced_env[key])
+
+    # assert is_bash_listlike(start) or is_bash_listlike(end), "Change but neither are listlike???"
+    # Either we are listlike or not. 
+    # if is_bash_listlike(start) or is_bash_listlike(end):
+    # else:
+      # Not listlike. Just replace.
+      # print("export {}={}")
+
+    # # Let's try to embed one in the other
+    # if start in end:
+    #   # Prefer to prefix to an existing, empty entry
+    #   if start:
+    #     sindex = end.index(start)
+    #   else:
+    #     sindex = len(end)
+
+    #   interpose = end[:sindex] + "$" + key + end[sindex+len(start):]
+    #   print("export {}={}".format(key, interpose))
+    # elif end in start:
+    #   # We might have had entries removed
+    #   raise NotImplementedError("No code to handle removal of entries from path")
+    # else:
+    #   # Just set the whole variable for now, might be more complicated though
+    #   print("export {}={} # Complex change. Potentially incorrect...".format(key, end))
     
 if __name__ == "__main__":
   main()
