@@ -65,14 +65,14 @@ def main():
 
   # Look for added keys that are listlike - pretend these are changes
   for changelike in [x for x in added_keys if is_bash_listlike(sourced_env[x])]:
-    print("({} is changelike but added - treating as list)".format(changelike))
+    # print("({} is changelike but added - treating as list)".format(changelike))
     changed_keys |= {changelike}
     added_keys = added_keys - {changelike}
 
   # Keys that changed, but are not listlike, are treated like adds - replacing
   for key in list(changed_keys):
     if not (is_bash_listlike(start_env.get(key, "")) or is_bash_listlike(sourced_env[key])):
-      print("({} changed but not in a listlike way, overwriting)".format(key))
+      # print("({} changed but not in a listlike way, overwriting)".format(key))
       changed_keys = changed_keys - {key}
       added_keys |= {key}
 
