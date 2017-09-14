@@ -34,6 +34,13 @@ def contains_sublist(a, b):
   "Tests if list a contains sequence b"
   return index_of_sublist(a,b) is not None
 
+class OutputCategories(object):
+  def __init__(self):
+    self.added = []
+    self.removed = []
+    self.listchange = []
+    self.assumed_listchange = []
+
 def main():
   # Handle arguments and help
   if "-h" in sys.argv or "--help" in sys.argv or len(sys.argv) == 1:
@@ -63,6 +70,8 @@ def main():
   added_keys = sourced_keys - start_keys
   changed_keys = {x for x in (start_keys & sourced_keys) if start_env[x] != sourced_env[x]}
 
+  output = OutputCategories()
+
   # Look for added keys that are listlike - pretend these are changes
   for changelike in [x for x in added_keys if is_bash_listlike(sourced_env[x])]:
     # print("({} is changelike but added - treating as list)".format(changelike))
@@ -78,11 +87,11 @@ def main():
 
   # Removed keys are the easy case: Must have been unset
   for key in start_keys - sourced_keys:
-    print("unset  {}")
+    output.removed.append("unset  {}")
 
   # Firstly, added keys
   for key in added_keys:
-    print("export {}={}".format(key, sourced_env[key]))
+    output.added.append("export {}={}".format(key, sourced_env[key]))
 
   # Now, changed keys, but we know they are lists or look like one
   for key in changed_keys:
@@ -95,8 +104,7 @@ def main():
 
     # If we don't have a start, assume that we added as a prefix
     if not start:
-      print("# No start example, but looks like a list so assuming prefix operation")
-      print("export {}={}".format(key, ":".join(end + ["$"+key])))
+      output.assumed_listchange.append("export {}={}".format(key, ":".join(end + ["$"+key])))
     else:
       # Look for the start embedded in the end
       if not contains_sublist(end, start):
@@ -108,34 +116,21 @@ def main():
       prefix = end[:ind]
       suffix = end[ind+len(start):]
       new_list = prefix + ["$"+key] + suffix
-      print("export {}={}".format(key, ":".join(new_list)))
-      # import pdb
-      # pdb.set_trace()
-      # print("...")
+      output.listchange.append("export {}={}".format(key, ":".join(new_list)))
 
-    # assert is_bash_listlike(start) or is_bash_listlike(end), "Change but neither are listlike???"
-    # Either we are listlike or not. 
-    # if is_bash_listlike(start) or is_bash_listlike(end):
-    # else:
-      # Not listlike. Just replace.
-      # print("export {}={}")
+  # Do the actual output, grouped, with information
+  if output.added:
+    print("# Variables added")
+    print("\n".join(output.added))
+  if output.removed:
+    print("# Variables deleted/unset")
+    print("\n".join(output.removed))
+  if output.listchange:
+    print("# Lists prefixed/appended to")
+    print("\n".join(output.listchange))
+  if output.assumed_listchange:
+    print("# Variables created - but looked like a list; assuming prefix")
+    print("\n".join(output.assumed_listchange))
 
-    # # Let's try to embed one in the other
-    # if start in end:
-    #   # Prefer to prefix to an existing, empty entry
-    #   if start:
-    #     sindex = end.index(start)
-    #   else:
-    #     sindex = len(end)
-
-    #   interpose = end[:sindex] + "$" + key + end[sindex+len(start):]
-    #   print("export {}={}".format(key, interpose))
-    # elif end in start:
-    #   # We might have had entries removed
-    #   raise NotImplementedError("No code to handle removal of entries from path")
-    # else:
-    #   # Just set the whole variable for now, might be more complicated though
-    #   print("export {}={} # Complex change. Potentially incorrect...".format(key, end))
-    
 if __name__ == "__main__":
   main()
