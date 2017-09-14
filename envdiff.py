@@ -21,7 +21,7 @@ def is_bash_listlike(entry):
   "Does this string look like a bash list?"
   return re_list_splitter.search(entry) is not None
 
-def sublist_index(a, b):
+def index_of_sublist(a, b):
   "Returns the index of b in a, or None"
   if len(a) < len(b):
     return None
@@ -32,7 +32,7 @@ def sublist_index(a, b):
 
 def contains_sublist(a, b):
   "Tests if list a contains sequence b"
-  return sublist_index(a,b) is not None
+  return index_of_sublist(a,b) is not None
 
 def main():
   # Handle arguments and help
@@ -86,8 +86,32 @@ def main():
 
   # Now, changed keys, but we know they are lists or look like one
   for key in changed_keys:
-    start = re_list_splitter.split(start_env.get(key, ""))
+    # Treat an empty start as an explicitly empty list
+    if start_env.get(key):
+      start = re_list_splitter.split(start_env.get(key, ""))
+    else:
+      start = []
     end = re_list_splitter.split(sourced_env[key])
+
+    # If we don't have a start, assume that we added as a prefix
+    if not start:
+      print("# No start example, but looks like a list so assuming prefix operation")
+      print("export {}={}".format(key, ":".join(end + ["$"+key])))
+    else:
+      # Look for the start embedded in the end
+      if not contains_sublist(end, start):
+        # We don't have the original list embedded in the end list...
+        raise NotImplementedError("Not yet handling lists with removed items")
+
+      ind = index_of_sublist(end, start)
+
+      prefix = end[:ind]
+      suffix = end[ind+len(start):]
+      new_list = prefix + ["$"+key] + suffix
+      print("export {}={}".format(key, ":".join(new_list)))
+      # import pdb
+      # pdb.set_trace()
+      # print("...")
 
     # assert is_bash_listlike(start) or is_bash_listlike(end), "Change but neither are listlike???"
     # Either we are listlike or not. 
