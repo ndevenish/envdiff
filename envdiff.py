@@ -41,6 +41,7 @@ def contains_sublist(a, b):
 class OutputCategories(object):
   def __init__(self):
     self.added = []
+    self.replaced = []
     self.removed = []
     self.listchange = []
     self.assumed_listchange = []
@@ -82,20 +83,23 @@ def main():
     changed_keys |= {changelike}
     added_keys = added_keys - {changelike}
 
-  # Keys that changed, but are not listlike, are treated like adds - replacing
+  # Keys that changed, but are not listlike, are treated separately
+  replaced_keys = set()
   for key in list(changed_keys):
     if not (is_bash_listlike(start_env.get(key, "")) or is_bash_listlike(sourced_env[key])):
       # print("({} changed but not in a listlike way, overwriting)".format(key))
       changed_keys = changed_keys - {key}
-      added_keys |= {key}
+      replaced_keys |= {key}
 
   # Removed keys are the easy case: Must have been unset
   for key in start_keys - sourced_keys:
     output.removed.append("unset  {}")
 
-  # Firstly, added keys
-  for key in added_keys:
-    output.added.append("export {}={}".format(key, sourced_env[key]))
+  # Firstly, added/replaced keys
+  for key in added_keys | replaced_keys:
+    # Choose where it goes
+    dest = output.added if key in added_keys else output.replaced
+    dest.append("export {}={}".format(key, sourced_env[key]))
 
   # Now, changed keys, but we know they are lists or look like one
   for key in changed_keys:
@@ -127,6 +131,10 @@ def main():
     print(COMMENT_PREFIX + " Variables added")
     print("\n".join(output.added))
     print()
+  if output.replaced:
+    print(COMMENT_PREFIX + " Variables replaced - these had a value before that changed")
+    print("\n".join(output.replaced))
+    print()
   if output.removed:
     print(COMMENT_PREFIX + " Variables deleted/unset")
     print("\n".join(output.removed))
@@ -136,7 +144,7 @@ def main():
     print("\n".join(output.listchange))
     print()
   if output.assumed_listchange:
-    print(COMMENT_PREFIX + " Variables created - but looked like a list; assuming prefix")
+    print(COMMENT_PREFIX + " Variables created - but looked like a list; assuming prefix operation")
     print("\n".join(output.assumed_listchange))
     print()
 
