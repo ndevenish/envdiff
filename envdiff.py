@@ -9,6 +9,8 @@ Usage:
   source_diff.py -h | --help
 """
 
+from __future__ import print_function
+
 import os
 import sys
 import subprocess
@@ -16,6 +18,8 @@ import re
 
 # Look for :, but not ://
 re_list_splitter = re.compile(r":(?!\/\/)")
+# The comment prefix to use for output
+COMMENT_PREFIX = "#"
 
 def is_bash_listlike(entry):
   "Does this string look like a bash list?"
@@ -120,17 +124,21 @@ def main():
 
   # Do the actual output, grouped, with information
   if output.added:
-    print("# Variables added")
+    print(COMMENT_PREFIX + " Variables added")
     print("\n".join(output.added))
+    print()
   if output.removed:
-    print("# Variables deleted/unset")
+    print(COMMENT_PREFIX + " Variables deleted/unset")
     print("\n".join(output.removed))
+    print()
   if output.listchange:
-    print("# Lists prefixed/appended to")
+    print(COMMENT_PREFIX + " Lists prefixed/appended to")
     print("\n".join(output.listchange))
+    print()
   if output.assumed_listchange:
-    print("# Variables created - but looked like a list; assuming prefix")
+    print(COMMENT_PREFIX + " Variables created - but looked like a list; assuming prefix")
     print("\n".join(output.assumed_listchange))
+    print()
 
 if __name__ == "__main__":
   main()
