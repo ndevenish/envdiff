@@ -187,7 +187,7 @@ def main():
   sourced_env = eval(env_output)
 
   # Keys to ignore - e.g. things that normally change in any sourced script
-  IGNORE = {"SHLVL", "_"}
+  IGNORE = {"SHLVL", "_", "OLDPWD"}
   for key in IGNORE:
     if key in sourced_env:
       del sourced_env[key]
