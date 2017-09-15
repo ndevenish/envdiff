@@ -5,9 +5,19 @@
 Works out the environmental changes from sourcing a script.
 
 Usage:
-  source_diff.py <script> [<arg> [<arg> ...]]
+  source_diff.py [--bash] <script> [<arg> [<arg> ...]]
   source_diff.py -h | --help
+
+Options:
+  --bash  Generate bash scripting output. Default (and only option ATM).
 """
+
+# (WIP possible future feature)
+# [-D <definition>]...
+# -D <definition>  Add variables to the output. e.g. -DSOME_VAR=/some/path
+#                  will add SOME_VAR to the output, and instances of /some/path
+#                  in other variables will be replaced with SOME_VAR.
+
 
 from __future__ import print_function
 
@@ -18,8 +28,6 @@ import re
 
 # Look for :, but not ://
 re_list_splitter = re.compile(r":(?!\/\/)")
-# The comment prefix to use for output
-COMMENT_PREFIX = "#"
 
 def is_bash_listlike(entry):
   "Does this string look like a bash list?"
@@ -38,7 +46,9 @@ def contains_sublist(a, b):
   "Tests if list a contains sequence b"
   return index_of_sublist(a,b) is not None
 
+
 class OutputCategories(object):
+  """Holds raw output, grouped into category"""
   def __init__(self):
     self.added = []
     self.replaced = []
@@ -47,21 +57,118 @@ class OutputCategories(object):
     self.assumed_listchange = []
     self.unhandled = []
 
+class OutputFormatter(object):
+  def __init__(self, prior_definitions=None):
+    self.definitions = prior_definitions
+    self._output = OutputCategories()
+
+  def add(self, name, value):
+    raise NotImplementedError()
+
+  def replace(self, name, value):
+    pass
+
+  def remove(self, name):
+    pass
+
+  def expand_list(self, name, prefix=[], postfix=[], assumed=True):
+    """A list has been expanded by adding things in front or behind.
+
+    If we have made an assumption about this, pass assumed=True"""
+    pass
+
+class BashFormatter(OutputFormatter):
+  def __init__(self, *args, **kwargs):
+    super(BashFormatter, self).__init__(*args, **kwargs)
+
+  def add(self, key, value):
+    self._output.added.append("export {}={}".format(key, value))
+
+  def replace(self, key, value):
+    "When a variable is replaced/written over completely"
+    self._output.replaced.append("export {}={}".format(key, value))
+
+  def unhandled(self, key, value, comment=""):
+    "When we don't know how to handle, just replace with a warning"
+    out = "export {}={}".format(key, value)
+    if comment:
+      out += " # {}".format(comment)
+    self._output.unhandled.append(out)
+
+  def remove(self, key):
+    self._output.removed.append("unset {}".format(key))
+
+  def expand_list(self, key, prefix=[], postfix=[], assumed=True):
+    dest_list = self._output.assumed_listchange if assumed else self._output.listchange
+    dest_list.append("export {}={}".format(key, ":".join(prefix + ["$"+key] + postfix)))
+
+  def dump(self):
+    lines = []
+      # Do the actual output, grouped, with information
+    if self._output.added:
+      lines.append("# Variables added")
+      lines.append("\n".join(self._output.added))
+      lines.append("")
+    if self._output.replaced:
+      lines.append("# Variables replaced - these had a value before that changed")
+      lines.append("\n".join(self._output.replaced))
+      lines.append("")
+    if self._output.removed:
+      lines.append("# Variables deleted/unset")
+      lines.append("\n".join(self._output.removed))
+      lines.append("")
+    if self._output.listchange:
+      lines.append("# Lists prefixed/appended to")
+      lines.append("\n".join(self._output.listchange))
+      lines.append("")
+    if self._output.assumed_listchange:
+      lines.append("# Variables created - but looked like a list; assuming prefix operation")
+      lines.append("\n".join(self._output.assumed_listchange))
+      lines.append("")
+    if self._output.unhandled:
+      lines.append("# WARNING: The following were unhandled/unknown/too complex")
+      lines.append("\n".join(x + "#" for x in self._output.unhandled))
+      lines.append("")
+    return "\n".join(lines)
+
+def process_argv(docstr, argv=None):
+  "Process argv in a docopt-like way"
+  options = {
+    "--bash": False,
+  }
+  # Make a copy of argv to start removing non-argument items from it
+  filtered_argv = sys.argv[1:] if argv is None else argv[1:]
+  
+  # While bash is the only output, this is a noop
+  if "--bash" in filtered_argv:
+    filtered_argv.remove("--bash")
+    options["--bash"] = True
+  
+  if "-h" in sys.argv or "--help" in filtered_argv or not filtered_argv:
+    print(docstr.strip())
+    # Exit with 0 if help requested, otherwise an error
+    sys.exit(1 if len(filtered_argv) == 1 else 0)
+
+  options["<script>"] = filtered_argv[0]
+  options["<arg>"] = filtered_argv[1:]
+
+  return options
+  
+
 def main():
   # Handle arguments and help
-  if "-h" in sys.argv or "--help" in sys.argv or len(sys.argv) == 1:
-    print(__doc__.strip())
-    # Exit with 0 if help requested, otherwise an error
-    sys.exit(1 if len(sys.argv) == 1 else 0)
-
-  script = " ".join([sys.argv[1]] + [" ".join(sys.argv[2:])])
-  shell_command = ". {} 2>&1 > /dev/null; python -c 'import os; print(repr(os.environ))'".format(script)
-
+  options = process_argv(__doc__)
+  
+  # The start environment is simple...
   start_env = dict(os.environ)
+
+  # Generate the after-environment by sourcing the script
+  script = " ".join([options["<script>"]] + [" ".join(options["<arg>"])])
+  shell_command = ". {} 2>&1 > /dev/null; python -c 'import os; print(repr(os.environ))'".format(script)
   env_output = subprocess.check_output(shell_command, shell=True)
   sourced_env = eval(env_output)
 
-  # Keys to ignore
+  # Keys to ignore - e.g. things that normally change in any sourced script
   IGNORE = {"SHLVL", "_"}
   for key in IGNORE:
     if key in sourced_env:
@@ -69,14 +176,14 @@ def main():
     if key in start_env:
       del start_env[key]
 
-  # Now, go through and find the differences in these two environments
+  # Make useful sets out of the dictionary keys
   start_keys = set(start_env.keys())
   sourced_keys = set(sourced_env.keys())
-
   added_keys = sourced_keys - start_keys
   changed_keys = {x for x in (start_keys & sourced_keys) if start_env[x] != sourced_env[x]}
 
-  output = OutputCategories()
+  # Choose the formatting class for output
+  formatter = BashFormatter()
 
   # Look for added keys that are listlike - pretend these are changes
   for changelike in [x for x in added_keys if is_bash_listlike(sourced_env[x])]:
@@ -94,13 +201,14 @@ def main():
 
   # Removed keys are the easy case: Must have been unset
   for key in start_keys - sourced_keys:
-    output.removed.append("unset  {}")
+    formatter.remove(key)
 
-  # Firstly, added/replaced keys
-  for key in added_keys | replaced_keys:
-    # Choose where it goes
-    dest = output.added if key in added_keys else output.replaced
-    dest.append("export {}={}".format(key, sourced_env[key]))
+  # Firstly, added keys
+  for key in added_keys:
+    formatter.add(key, sourced_env[key])
+  # Handle keys explicitly overwritten separately
+  for key in replaced_keys:
+    formatter.replace(key, sourced_env[key])
 
   # Now, changed keys, but we know they are lists or look like one
   for key in changed_keys:
@@ -113,11 +221,13 @@ def main():
 
     # If we don't have a start, assume that we added as a prefix
     if not start:
-      output.assumed_listchange.append("export {}={}".format(key, ":".join(end + ["$"+key])))
+      formatter.expand_list(key, prefix=end, assumed=True)
+      # output.assumed_listchange.append("export {}={}".format(key, ":".join(end + ["$"+key])))
     else:
       # Look for the start embedded in the end
       if not contains_sublist(end, start):
-        output.unhandled.append("export {}={} # complex list handling?".format(key, sourced_env[key]))
+        formatter.unhandled(key, sourced_env[key])
+        # output.unhandled.append("export {}={} # complex list handling?".format(key, sourced_env[key]))
         # We don't have the original list embedded in the end list...
         # raise NotImplementedError("Not yet handling lists with removed items")
 
@@ -125,34 +235,11 @@ def main():
 
       prefix = end[:ind]
       suffix = end[ind+len(start):]
-      new_list = prefix + ["$"+key] + suffix
-      output.listchange.append("export {}={}".format(key, ":".join(new_list)))
+      formatter.expand_list(key, prefix, suffix)
+      # new_list = prefix + ["$"+key] + suffix
+      # output.listchange.append("export {}={}".format(key, ":".join(new_list)))
 
-  # Do the actual output, grouped, with information
-  if output.added:
-    print(COMMENT_PREFIX + " Variables added")
-    print("\n".join(output.added))
-    print()
-  if output.replaced:
-    print(COMMENT_PREFIX + " Variables replaced - these had a value before that changed")
-    print("\n".join(output.replaced))
-    print()
-  if output.removed:
-    print(COMMENT_PREFIX + " Variables deleted/unset")
-    print("\n".join(output.removed))
-    print()
-  if output.listchange:
-    print(COMMENT_PREFIX + " Lists prefixed/appended to")
-    print("\n".join(output.listchange))
-    print()
-  if output.assumed_listchange:
-    print(COMMENT_PREFIX + " Variables created - but looked like a list; assuming prefix operation")
-    print("\n".join(output.assumed_listchange))
-    print()
-  if output.unhandled:
-    print(COMMENT_PREFIX + " WARNING: The following were unhandled/unknown/too complex")
-    print("\n".join(x + "#" for x in output.unhandled))
-    print()
+  print(formatter.dump())
 
 if __name__ == "__main__":
   main()
