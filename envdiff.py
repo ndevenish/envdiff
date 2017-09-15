@@ -183,7 +183,7 @@ def main():
   # Generate the after-environment by sourcing the script
   script = " ".join([options["<script>"]] + [" ".join(options["<arg>"])])
   shell_command = ". {} 1>&2 && python -c 'import os; print(repr(os.environ))'".format(script)
-  env_output = subprocess.check_output(shell_command, shell=True)
+  env_output = subprocess.check_output(shell_command, shell=True, executable="/bin/bash")
   sourced_env = eval(env_output)
 
   # Keys to ignore - e.g. things that normally change in any sourced script
