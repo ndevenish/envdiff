@@ -107,27 +107,27 @@ class BashFormatter(OutputFormatter):
       # Do the actual output, grouped, with information
     if self._output.added:
       lines.append("# Variables added")
-      lines.append("\n".join(self._output.added))
+      lines.append("\n".join(sorted(self._output.added)))
       lines.append("")
     if self._output.replaced:
       lines.append("# Variables replaced - these had a value before that changed")
-      lines.append("\n".join(self._output.replaced))
+      lines.append("\n".join(sorted(self._output.replaced)))
       lines.append("")
     if self._output.removed:
       lines.append("# Variables deleted/unset")
-      lines.append("\n".join(self._output.removed))
+      lines.append("\n".join(sorted(self._output.removed)))
       lines.append("")
     if self._output.listchange:
       lines.append("# Lists prefixed/appended to")
-      lines.append("\n".join(self._output.listchange))
+      lines.append("\n".join(sorted(self._output.listchange)))
       lines.append("")
     if self._output.assumed_listchange:
       lines.append("# Variables created - but looked like a list; assuming prefix operation")
-      lines.append("\n".join(self._output.assumed_listchange))
+      lines.append("\n".join(sorted(self._output.assumed_listchange)))
       lines.append("")
     if self._output.unhandled:
       lines.append("# WARNING: The following were unhandled/unknown/too complex")
-      lines.append("\n".join(x + "#" for x in self._output.unhandled))
+      lines.append("\n".join(x + "#" for x in sorted(self._output.unhandled)))
       lines.append("")
     return "\n".join(lines)
 
