@@ -9,7 +9,8 @@ Usage:
   source_diff.py -h | --help
 
 Options:
-  --bash  Generate bash scripting output. Default (and only option ATM).
+  --bash        Generate bash scripting output. Default (and only option ATM).
+  --warn-empty  Warn when replacing an empty variable (normally counts as added)
 """
 
 # (WIP possible future feature)
@@ -161,7 +162,9 @@ def process_argv(docstr, argv=None):
   if "--bash" in filtered_argv:
     filtered_argv.remove("--bash")
     options["--bash"] = True
-  
+  if "--warn-empty" in filtered_argv:
+    filtered_argv.remove("--warn-empty")
+    options["--warn-empty"] = True
   if "-h" in sys.argv or "--help" in filtered_argv or not filtered_argv:
     print(docstr.strip())
     # Exit with 0 if help requested, otherwise an error
@@ -215,7 +218,13 @@ def main():
     if not (is_bash_listlike(start_env.get(key, "")) or is_bash_listlike(sourced_env[key])):
       # print("({} changed but not in a listlike way, overwriting)".format(key))
       changed_keys = changed_keys - {key}
-      replaced_keys |= {key}
+      # If we changed from nothing, then still count as added
+      if start_env.get(key) == "":
+        if options["--warn-empty"]:
+          print("Warning: variable {} was replaced, but was originally empty. Emitting as add operation".format(key))
+        added_keys |= {key}
+      else:
+        replaced_keys |= {key}
 
   # Removed keys are the easy case: Must have been unset
   for key in start_keys - sourced_keys:
@@ -224,6 +233,7 @@ def main():
   # Firstly, added keys
   for key in added_keys:
     formatter.add(key, sourced_env[key])
+
   # Handle keys explicitly overwritten separately
   for key in replaced_keys:
     formatter.replace(key, sourced_env[key])
