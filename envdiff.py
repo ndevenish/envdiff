@@ -154,6 +154,7 @@ def process_argv(docstr, argv=None):
   "Process argv in a docopt-like way"
   options = {
     "--bash": False,
+    "--warn-empty": False,
   }
   # Make a copy of argv to start removing non-argument items from it
   filtered_argv = sys.argv[1:] if argv is None else argv[1:]
