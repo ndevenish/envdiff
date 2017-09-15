@@ -182,7 +182,7 @@ def main():
 
   # Generate the after-environment by sourcing the script
   script = " ".join([options["<script>"]] + [" ".join(options["<arg>"])])
-  shell_command = ". {} 2>&1 > /dev/null && python -c 'import os; print(repr(os.environ))'".format(script)
+  shell_command = ". {} 1>&2 && python -c 'import os; print(repr(os.environ))'".format(script)
   env_output = subprocess.check_output(shell_command, shell=True)
   sourced_env = eval(env_output)
 
@@ -248,12 +248,14 @@ def main():
         # output.unhandled.append("export {}={} # complex list handling?".format(key, sourced_env[key]))
         # We don't have the original list embedded in the end list...
         # raise NotImplementedError("Not yet handling lists with removed items")
+      else:
 
-      ind = index_of_sublist(end, start)
+        ind = index_of_sublist(end, start)
 
-      prefix = end[:ind]
-      suffix = end[ind+len(start):]
-      formatter.expand_list(key, prefix, suffix)
+        prefix = end[:ind]
+        suffix = end[ind+len(start):]
+        formatter.expand_list(key, prefix, suffix)
+
       # new_list = prefix + ["$"+key] + suffix
       # output.listchange.append("export {}={}".format(key, ":".join(new_list)))
 
