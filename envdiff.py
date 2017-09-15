@@ -25,6 +25,7 @@ import os
 import sys
 import subprocess
 import re
+from abc import ABCMeta, abstractmethod
 
 # Look for :, but not ://
 re_list_splitter = re.compile(r":(?!\/\/)")
@@ -58,24 +59,41 @@ class OutputCategories(object):
     self.unhandled = []
 
 class OutputFormatter(object):
+  __metaclass__ = ABCMeta
+
   def __init__(self, prior_definitions=None):
     self.definitions = prior_definitions
     self._output = OutputCategories()
 
-  def add(self, name, value):
+  @abstractmethod
+  def add(self, key, value):
     raise NotImplementedError()
 
-  def replace(self, name, value):
-    pass
+  @abstractmethod
+  def replace(self, key, value):
+    "When a variable is replaced/written over completely"
+    raise NotImplementedError()
 
-  def remove(self, name):
-    pass
+  @abstractmethod
+  def unhandled(self, key, value, comment=""):
+    "When we don't know how to handle, just replace with a warning"
+    raise NotImplementedError()
 
-  def expand_list(self, name, prefix=[], postfix=[], assumed=True):
+  @abstractmethod
+  def remove(self, key):
+    raise NotImplementedError()
+
+  @abstractmethod
+  def expand_list(self, key, prefix=[], postfix=[], assumed=True):
     """A list has been expanded by adding things in front or behind.
 
-    If we have made an assumption about this, pass assumed=True"""
-    pass
+    :param assumed: This is an assumption. Used to annotate output.
+    """
+    raise NotImplementedError()
+
+  @abstractmethod
+  def dump(self):
+    raise NotImplementedError()
 
 class BashFormatter(OutputFormatter):
   def __init__(self, *args, **kwargs):
