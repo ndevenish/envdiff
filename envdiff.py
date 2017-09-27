@@ -246,11 +246,16 @@ def main():
   # The start environment is simple...
   start_env = dict(os.environ)
 
+  # The magic string used to separate output
+  SIGNATURE = "#ENVDIFF_ENVDUMP#"
+
   # Generate the after-environment by sourcing the script
   script = " ".join([options.script] + [" ".join(options.args)])
-  shell_command = ". {} 1>&2 && python -c 'import os; print(repr(os.environ))'".format(script)
+  shell_command = ". {} 1>&2 && python -c 'import os; print(\"{}\" + repr(os.environ))'".format(script, SIGNATURE)
   try:
     env_output = subprocess.check_output(shell_command, shell=True, executable="/bin/bash", stderr=subprocess.STDOUT)
+    assert SIGNATURE in env_output
+    env_output = env_output[env_output.find(SIGNATURE)+len(SIGNATURE):].strip()
   except subprocess.CalledProcessError as ex:
     print("Error loading script: Returned non-zero status code.")
     if ex.output:
