@@ -23,6 +23,7 @@ Options:
 
 from __future__ import print_function
 
+import argparse
 import os
 import sys
 import subprocess
@@ -183,7 +184,7 @@ class GNUModulesFormatter(OutputFormatter):
       prefix = []
     if len(postfix) == 1 and postfix[0].strip() == "":
       postfix = []
-    
+
     if prefix:
       dest_list.append("prepend-path {} {}".format(key, ":".join(prefix)))
     if postfix:
@@ -218,50 +219,35 @@ class GNUModulesFormatter(OutputFormatter):
       lines.append("")
     return "\n".join(lines)
 
-def process_argv(docstr, argv=None):
-  "Process argv in a docopt-like way"
-  options = {
-    "--bash": True,
-    "--modules": False,
-    "--warn-empty": False,
-  }
-  # Make a copy of argv to start removing non-argument items from it
-  filtered_argv = sys.argv[1:] if argv is None else argv[1:]
-  
-  # While bash is the only output, this is a noop
-  if "--bash" in filtered_argv and "--modules" in filtered_argv:
-    print("Error: Can not specify both --bash and --modules")
-    sys.exit(1)
-  if "--bash" in filtered_argv:
-    filtered_argv.remove("--bash")
-    options["--bash"] = True
-  if "--modules" in filtered_argv:
-    filtered_argv.remove("--modules")
-    options["--bash"] = False
-    options["--modules"] = True
-  if "--warn-empty" in filtered_argv:
-    filtered_argv.remove("--warn-empty")
-    options["--warn-empty"] = True
-  if "-h" in sys.argv or "--help" in filtered_argv or not filtered_argv:
-    print(docstr.strip())
-    # Exit with 0 if help requested, otherwise an error
-    sys.exit(1 if len(filtered_argv) == 1 else 0)
+def process_argv():
+  """Build the parser and process the args"""
+  parser = argparse.ArgumentParser(description="Works out the environmental changes from sourcing a script.")
+  parser.add_argument('--warn-empty', action='store_true',
+    help="Warn when replacing an empty variable (normally counts as added)")
 
-  options["<script>"] = filtered_argv[0]
-  options["<arg>"] = filtered_argv[1:]
+  group = parser.add_mutually_exclusive_group()
+  group.add_argument('--bash',    dest="formatter", action='store_const', 
+    const=BashFormatter, default=BashFormatter,
+    help="Generate bash scripting output. Default")
+  group.add_argument('--modules', dest="formatter", action='store_const', 
+    const=GNUModulesFormatter,
+    help="Generate GNU Modules Modulefile syntax output")
 
-  return options
+  parser.add_argument("script", metavar="<script>", help="The name of the script to source")
+  parser.add_argument("args", metavar="<arg>", nargs=argparse.REMAINDER, help="Any arguments to pass to the sourced script")
+
+  return parser.parse_args()
   
 
 def main():
   # Handle arguments and help
-  options = process_argv(__doc__)
+  options = process_argv()
   
   # The start environment is simple...
   start_env = dict(os.environ)
 
   # Generate the after-environment by sourcing the script
-  script = " ".join([options["<script>"]] + [" ".join(options["<arg>"])])
+  script = " ".join([options.script] + [" ".join(options.args)])
   shell_command = ". {} 1>&2 && python -c 'import os; print(repr(os.environ))'".format(script)
   try:
     env_output = subprocess.check_output(shell_command, shell=True, executable="/bin/bash", stderr=subprocess.STDOUT)
@@ -290,11 +276,8 @@ def main():
   changed_keys = {x for x in (start_keys & sourced_keys) if start_env[x] != sourced_env[x]}
 
   # Choose the formatting class for output
-  if options["--bash"]:
-    formatter = BashFormatter()
-  elif options["--modules"]:
-    formatter = GNUModulesFormatter()
-
+  formatter = options.formatter()
+  
   # Look for added keys that are listlike - pretend these are changes
   for changelike in [x for x in added_keys if is_bash_listlike(sourced_env[x])]:
     # print("({} is changelike but added - treating as list)".format(changelike))
@@ -309,7 +292,7 @@ def main():
       changed_keys = changed_keys - {key}
       # If we changed from nothing, then still count as added
       if start_env.get(key) == "":
-        if options["--warn-empty"]:
+        if options.warn_empty:
           print("Warning: variable {} was replaced, but was originally empty. Emitting as add operation".format(key))
         added_keys |= {key}
       else:
