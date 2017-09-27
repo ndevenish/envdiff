@@ -117,7 +117,7 @@ class BashFormatter(OutputFormatter):
   def remove(self, key):
     self._output.removed.append("unset {}".format(key))
 
-  def expand_list(self, key, prefix=[], postfix=[], assumed=True):
+  def expand_list(self, key, prefix=[], postfix=[], assumed=False):
     dest_list = self._output.assumed_listchange if assumed else self._output.listchange
     dest_list.append("export {}={}".format(key, ":".join(prefix + ["$"+key] + postfix)))
 
