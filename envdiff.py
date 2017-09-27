@@ -177,6 +177,13 @@ class GNUModulesFormatter(OutputFormatter):
 
   def expand_list(self, key, prefix=[], postfix=[], assumed=False):
     dest_list = self._output.assumed_listchange if assumed else self._output.listchange
+
+    # Don't support single-item empty prefix/postfix
+    if len(prefix) == 1 and prefix[0].strip() == "":
+      prefix = []
+    if len(postfix) == 1 and postfix[0].strip() == "":
+      postfix = []
+    
     if prefix:
       dest_list.append("prepend-path {} {}".format(key, ":".join(prefix)))
     if postfix:
