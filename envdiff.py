@@ -5,11 +5,12 @@
 Works out the environmental changes from sourcing a script.
 
 Usage:
-  source_diff.py [--bash] <script> [<arg> [<arg> ...]]
+  source_diff.py [--bash | --modules] <script> [<arg> [<arg> ...]]
   source_diff.py -h | --help
 
 Options:
-  --bash        Generate bash scripting output. Default (and only option ATM).
+  --bash        Generate bash scripting output. Default
+  --modules     Generate GNU Modules Modulefile syntax output
   --warn-empty  Warn when replacing an empty variable (normally counts as added)
 """
 
@@ -150,19 +151,87 @@ class BashFormatter(OutputFormatter):
       lines.append("")
     return "\n".join(lines)
 
+class GNUModulesFormatter(OutputFormatter):
+  def __init__(self, *args, **kwargs):
+    super(GNUModulesFormatter, self).__init__(*args, **kwargs)
+
+  def add(self, key, value):
+    # self._output.added.append("export {}={}".format(key, value))
+    self._output.added.append("setenv {} {}".format(key, value))
+
+  def replace(self, key, value):
+    "When a variable is replaced/written over completely"
+    # self._output.replaced.append("export {}={}".format(key, value))
+    self._output.replaced.append("setenv {} {}".format(key, value))
+
+  def unhandled(self, key, value, comment=""):
+    "When we don't know how to handle, just replace with a warning"
+    # out = "export {}={}".format(key, value)
+    out = "setenv {} {}".format(key, value)
+    if comment:
+      out += " # {}".format(comment)
+    self._output.unhandled.append(out)
+
+  def remove(self, key):
+    self._output.removed.append("unsetenv {}".format(key))
+
+  def expand_list(self, key, prefix=[], postfix=[], assumed=False):
+    dest_list = self._output.assumed_listchange if assumed else self._output.listchange
+    if prefix:
+      dest_list.append("prepend-path {} {}".format(key, ":".join(prefix)))
+    if postfix:
+      dest_list.append("append-path  {} {}".format(key, ":".join(postfix)))
+      
+  def dump(self):
+    lines = []
+      # Do the actual output, grouped, with information
+    if self._output.added:
+      lines.append("# Variables added")
+      lines.append("\n".join(sorted(self._output.added)))
+      lines.append("")
+    if self._output.replaced:
+      lines.append("# Variables replaced - these had a value before that changed")
+      lines.append("\n".join(sorted(self._output.replaced)))
+      lines.append("")
+    if self._output.removed:
+      lines.append("# Variables deleted/unset")
+      lines.append("\n".join(sorted(self._output.removed)))
+      lines.append("")
+    if self._output.listchange:
+      lines.append("# Lists prefixed/appended to")
+      lines.append("\n".join(sorted(self._output.listchange)))
+      lines.append("")
+    if self._output.assumed_listchange:
+      lines.append("# Variables created - but looked like a list; assuming prefix operation")
+      lines.append("\n".join(sorted(self._output.assumed_listchange)))
+      lines.append("")
+    if self._output.unhandled:
+      lines.append("# WARNING: The following were unhandled/unknown/too complex")
+      lines.append("\n".join(x + "#" for x in sorted(self._output.unhandled)))
+      lines.append("")
+    return "\n".join(lines)
+
 def process_argv(docstr, argv=None):
   "Process argv in a docopt-like way"
   options = {
-    "--bash": False,
+    "--bash": True,
+    "--modules": False,
     "--warn-empty": False,
   }
   # Make a copy of argv to start removing non-argument items from it
   filtered_argv = sys.argv[1:] if argv is None else argv[1:]
   
   # While bash is the only output, this is a noop
+  if "--bash" in filtered_argv and "--modules" in filtered_argv:
+    print("Error: Can not specify both --bash and --modules")
+    sys.exit(1)
   if "--bash" in filtered_argv:
     filtered_argv.remove("--bash")
     options["--bash"] = True
+  if "--modules" in filtered_argv:
+    filtered_argv.remove("--modules")
+    options["--bash"] = False
+    options["--modules"] = True
   if "--warn-empty" in filtered_argv:
     filtered_argv.remove("--warn-empty")
     options["--warn-empty"] = True
@@ -194,7 +263,7 @@ def main():
     if ex.output:
       print("Output from failed process:")
       print("\n".join("  " + x for x in ex.output.splitlines()))
-    
+
     sys.exit(1)
 
   sourced_env = eval(env_output)
@@ -214,7 +283,10 @@ def main():
   changed_keys = {x for x in (start_keys & sourced_keys) if start_env[x] != sourced_env[x]}
 
   # Choose the formatting class for output
-  formatter = BashFormatter()
+  if options["--bash"]:
+    formatter = BashFormatter()
+  elif options["--modules"]:
+    formatter = GNUModulesFormatter()
 
   # Look for added keys that are listlike - pretend these are changes
   for changelike in [x for x in added_keys if is_bash_listlike(sourced_env[x])]:
