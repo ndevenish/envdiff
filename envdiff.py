@@ -32,6 +32,8 @@ from abc import ABCMeta, abstractmethod
 
 # Look for :, but not ://
 re_list_splitter = re.compile(r":(?!\/\/)")
+# Look for characters that require quoting in tcl
+re_tcl_string = re.compile(r"[\s\[\]{}\"'$]")
 
 def is_bash_listlike(entry):
   "Does this string look like a bash list?"
@@ -152,23 +154,27 @@ class BashFormatter(OutputFormatter):
       lines.append("")
     return "\n".join(lines)
 
+def _tcl_escape(s):
+  """TCL-escape a string"""
+  if not re_tcl_string.search(s):
+    return s
+  return "{" + s.replace("{", r"\{").replace("}", r"\}") + "}"
+ 
 class GNUModulesFormatter(OutputFormatter):
   def __init__(self, *args, **kwargs):
     super(GNUModulesFormatter, self).__init__(*args, **kwargs)
 
   def add(self, key, value):
-    # self._output.added.append("export {}={}".format(key, value))
-    self._output.added.append("setenv {} {}".format(key, value))
+    self._output.added.append("setenv {} {}".format(key, _tcl_escape(value)))
 
   def replace(self, key, value):
     "When a variable is replaced/written over completely"
-    # self._output.replaced.append("export {}={}".format(key, value))
-    self._output.replaced.append("setenv {} {}".format(key, value))
+    self._output.replaced.append("setenv {} {}".format(key, _tcl_escape(value)))
 
   def unhandled(self, key, value, comment=""):
     "When we don't know how to handle, just replace with a warning"
     # out = "export {}={}".format(key, value)
-    out = "setenv {} {}".format(key, value)
+    out = "setenv {} {}".format(key, _tcl_escape(value))
     if comment:
       out += " # {}".format(comment)
     self._output.unhandled.append(out)
@@ -186,9 +192,9 @@ class GNUModulesFormatter(OutputFormatter):
       postfix = []
 
     if prefix:
-      dest_list.append("prepend-path {} {}".format(key, ":".join(prefix)))
+      dest_list.append("prepend-path {} {}".format(key, _tcl_escape(":".join(prefix))))
     if postfix:
-      dest_list.append("append-path  {} {}".format(key, ":".join(postfix)))
+      dest_list.append("append-path  {} {}".format(key, _tcl_escape(":".join(postfix))))
       
   def dump(self):
     lines = []
